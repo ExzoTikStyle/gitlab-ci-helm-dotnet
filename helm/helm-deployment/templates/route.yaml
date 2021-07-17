@@ -1,0 +1,21 @@
+{{- if hasKey .Values "route"}}
+{{- if .Values.route.enabled}}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{.Values.metadata.name}}
+spec:
+  host: ""
+  path: {{.Values.route.path}}
+  port:
+    targetPort: {{.Values.service.app.name}}
+  to:
+    kind: Service
+    name: {{.Values.metadata.name}}
+    weight: 100
+  wildcardPolicy: None
+status:
+  ingress:
+    - host: ""
+{{- end}}
+{{- end}}

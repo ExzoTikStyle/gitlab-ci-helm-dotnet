@@ -1,0 +1,62 @@
+{{- if hasKey .Values "deployment"}}
+{{- if .Values.deployment.enabled}}
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
+metadata:
+  name: {{.Values.metadata.name}}
+  labels:
+    app: {{.Values.metadata.name}}
+    pipelineref: {{.Values.pipelineref}}
+    githash: {{.Values.githash}}
+spec:
+  replicas: {{.Values.replicaCount}}
+  selector:
+    app: {{.Values.metadata.name}}
+  template:
+    metadata:
+      labels:
+        app: {{.Values.metadata.name}}
+        pipelineref: {{.Values.pipelineref}}
+        githash: {{.Values.githash}}
+    spec:
+      containers:
+        - name: {{.Values.metadata.name}}
+          command: {{.Values.command}}
+          args: {{.Values.args}}
+          image: "{{.Values.image}}"
+          env:
+          - name: APP_ENV
+            value: "{{.Values.ENV}}"
+          - name: APP_NAME
+            value: "{{.Values.vars.APP_NAME}}"
+          - name: APP_DLL
+            value: "{{.Values.vars.APP_NAME}}.dll"
+          - name: DOTNET_ENVIRONMENT
+            value: "{{.Values.ENV}}"
+          imagePullPolicy: Always
+          volumeMounts:
+          - name: {{.Values.metadata.name}}-conf
+            mountPath: /opt/{{.Values.vars.APP_NAME}}-conf
+          ports:
+            - containerPort: {{.Values.service.app.targetPort}}
+              name: {{.Values.service.app.name}}
+          resources:
+            limits:
+              memory: {{.Values.limits.memory}}
+              cpu: {{.Values.limits.cpu}}
+            requests:
+              memory: {{.Values.requests.memory}}
+              cpu: {{.Values.requests.cpu}}
+          {{- if .Values.healthchecks.livenessProbe}}
+          livenessProbe: {{.Values.healthchecks.livenessProbe | toYaml | nindent 12}}
+          {{- end}}
+          {{- if .Values.healthchecks.readinessProbe}}
+          readinessProbe: {{.Values.healthchecks.readinessProbe | toYaml | nindent 12}}
+          {{- end}}
+      volumes:
+        - name: {{.Values.metadata.name}}-conf
+          secret:
+            secretName: {{.Values.secret.name}}
+            defaultMode: 0755
+{{- end}}
+{{- end}}

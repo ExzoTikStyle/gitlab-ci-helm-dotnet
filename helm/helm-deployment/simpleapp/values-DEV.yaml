@@ -1,0 +1,53 @@
+# Default values for test.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+metadata:
+  labels:
+    mainteiner: ExzoTikFruiT
+
+replicaCount: 1
+
+vars:
+  APP_NAME: simpleapp
+
+deployment:
+  enabled: true
+
+route:
+  enabled: true
+  path:
+
+secret:
+  enabled: true
+  name: simpleapp-sec
+
+service:
+  enabled: true
+  type: ClusterIP
+  app:
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: dotnet
+
+healthchecks:
+   readinessProbe:
+     httpGet:
+       path: /1
+       port: 8080
+     initialDelaySeconds: 3
+     periodSeconds: 5
+   livenessProbe:
+     httpGet:
+       path: /2
+       port: 8080
+     initialDelaySeconds: 40
+     periodSeconds: 10  
+
+limits:
+  memory: "204Mi"
+  cpu: "150m"
+requests:
+  memory: "204Mi"
+  cpu: "100m"

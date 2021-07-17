@@ -1,0 +1,47 @@
+{{- if hasKey .Values "job"}}
+{{- if .Values.job.enabled}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{.Values.metadata.name}}
+  labels:
+    app: {{.Values.metadata.name}}
+    mainteiner: {{.Values.metadata.labels.mainteiner}}
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{.Values.metadata.name}}
+        pipelineref: {{.Values.pipelineref}}
+        githash: {{.Values.githash}}
+    spec:
+      containers:
+        - name: {{.Values.metadata.name}}
+          image: "{{.Values.image}}"
+          env:
+          - name: APP_ENV
+            value: "{{.Values.ENV}}"
+          - name: APP_NAME
+            value: "{{.Values.vars.APP_NAME}}"
+          - name: APP_DLL
+            value: "{{.Values.vars.APP_NAME}}.dll"
+          - name: DOTNET_ENVIRONMENT
+            value: "{{.Values.ENV}}"
+          volumeMounts:
+          - name: {{.Values.metadata.name}}-conf
+            mountPath: /opt/{{.Values.vars.APP_NAME}}-conf
+          resources:
+            limits:
+              memory: "280Mi"
+              cpu: "101m"
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+      restartPolicy: Never
+      volumes:
+        - name: {{.Values.metadata.name}}-conf
+          secret:
+            secretName: {{.Values.secret.name}}
+            defaultMode: 0755
+{{- end}}           
+{{- end}}

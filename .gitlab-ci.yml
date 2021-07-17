@@ -1,0 +1,89 @@
+stages:
+  - build
+  - build-docker-image
+  - deploy
+
+.deploy_part: &deploy_part
+  stage: deploy
+  image: <registry>/helm-oc:3.5.4
+  script:
+    - oc login $OSHIFT_URL -n $NAMESPACE --token=${OSHIFT_TOKEN} --insecure-skip-tls-verify
+    - oc delete job --all -n $NAMESPACE
+    - vault login $VAULT_TOKEN > /dev/null
+    - "for proj in ${PROJECTS_LIST[@]}; \
+        do
+            export secret=$(vault kv get -field=$proj.$ENV.json /projects/$CI_PROJECT_NAME/$proj | base64 -w 0);
+            proj=$(echo $proj | awk '{print tolower($0)}' | tr . -);
+            helm upgrade --wait --atomic --history-max 10 --install $proj-$(echo $ENV | awk '{print tolower($0)}' | tr . -) --namespace $NAMESPACE --set ENV=$ENV --set pipelineref=\"$CI_COMMIT_REF_SLUG-$CI_PIPELINE_ID\" --set base64secret=$secret --set githash=\"$CI_COMMIT_SHORT_SHA\" --set metadata.name=$proj --set image=$NEXUS_URL/$CI_PROJECT_NAME/$proj:$CI_COMMIT_REF_SLUG-$CI_PIPELINE_ID -f helm/helm-deployment/$proj/values-$ENV.yaml helm/helm-deployment/ ;
+        done"
+
+build:
+    stage: build
+    image: <registry>/dotnet/sdk:3.1
+    variables:
+      PROJECTS_LIST: ${PROJ_TO_BUILD}
+    script:
+    - >
+      for proj in $PROJECTS_LIST; do
+            dotnet publish src/$proj/$proj.csproj -c $CONFIGURATION -o publish/$proj/ --source $NUGET_SOURCES
+      done
+    artifacts:
+      paths:
+        - publish
+      expire_in: 12 hour
+
+      
+build-docker-images:
+    stage: build-docker-image
+    image: <registry>/docker:18.09-bash
+    services: 
+      - name: docker:18.09-dind
+        command: ["--insecure-registry=<registry>"]
+    variables:
+      PROJECTS_LIST: ${PROJ_TO_BUILD}
+      DOCKER_DRIVER: overlay2
+      DOCKER_HOST: tcp://docker:2375/
+    dependencies: [build]
+    before_script:
+    - echo $NEXUS_PASSWORD | docker login $NEXUS_URL -u $NEXUS_USER --password-stdin
+    script:
+    - >
+      for proj in $PROJECTS_LIST; do
+            echo "Building $proj"
+            export image=$(echo $proj | awk '{print tolower($0)}' | tr . -);
+            docker build -f Dockerfile --build-arg APP_NAME=$proj -t $NEXUS_URL/$CI_PROJECT_NAME/$image:$CI_COMMIT_REF_SLUG-$CI_PIPELINE_ID .;
+            docker push $NEXUS_URL/$CI_PROJECT_NAME/$image:$CI_COMMIT_REF_SLUG-$CI_PIPELINE_ID;
+            docker rmi $NEXUS_URL/$CI_PROJECT_NAME/$image:$CI_COMMIT_REF_SLUG-$CI_PIPELINE_ID;
+            printf "%0.s#" {1..150} && echo -e "\n";
+      done
+    after_script:
+    - docker logout $NEXUS_URL
+
+deploy:DEV:
+  <<: *deploy_part
+  variables:
+    ENV: DEV
+    OSHIFT_URL: ${OSHIFT_TST}
+    OSHIFT_TOKEN: ${OSHIFT_TOKEN_DEV}
+    NAMESPACE: helm-dotnet-dev
+    PROJECTS_LIST: ${PROJ_TO_BUILD}
+
+deploy:TEST:
+  <<: *deploy_part
+  variables:
+    ENV: TEST
+    OSHIFT_URL: ${OSHIFT_TST}
+    OSHIFT_TOKEN: ${OSHIFT_TOKEN_TST}
+    NAMESPACE: helm-dotnet-test
+    PROJECTS_LIST: ${PROJ_TO_BUILD}
+  when: manual
+
+deploy:NTS:
+  <<: *deploy_part
+  variables:
+    ENV: TEST
+    OSHIFT_URL: ${OSHIFT_NTST}
+    OSHIFT_TOKEN: ${OSHIFT_TOKEN_NTST}
+    NAMESPACE: helm-dotnet-ntest
+    PROJECTS_LIST: ${PROJ_TO_BUILD}
+  when: manual
